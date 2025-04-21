@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>📇 VCF Duplicate Phone Number Merger</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 40px; }
+    button { padding: 10px 20px; margin: 10px 5px 0 0; }
+    .info { margin: 20px 0; }
+    .duplicates { margin-top: 20px; padding: 10px; border: 1px solid #ccc; max-height: 300px; overflow-y: auto; }
+    .duplicates h4 { margin: 5px 0; }
+  </style>
+</head>
+<body>
+  <h2>📇 VCF Duplicate Phone Number Merger</h2>
+
+  <button id="mergeBtn" style="display:none;">✅ Merge & Download</button>
+  <input type="file" id="vcfInput" accept=".vcf" />
+
+  <div class="info" id="summary"></div>
+  <div class="duplicates" id="duplicates" style="display:none;"></div>
+
+  <script>
+    let originalContacts = [];
+    let mergedContacts = [];
+    let duplicatesMap = new Map();
+
+    document.getElementById('vcfInput').addEventListener('change', async function () {
+      const file = this.files[0];
+      if (!file) return;
+
+      const text = await file.text();
+      originalContacts = parseVCF(text);
+
+      detectPhoneDuplicates(originalContacts);
+
+      const summaryDiv = document.getElementById('summary');
+      const duplicateCount = duplicatesMap.size;
+
+      if (duplicateCount > 0) {
+        summaryDiv.innerHTML = `🔁 <strong>Detected ${duplicateCount} duplicate phone number(s).</strong>`;
+        document.getElementById('mergeBtn').style.display = 'inline-block';
+        showDuplicates();
+      } else {
+        summaryDiv.innerHTML = `✅ <strong>No duplicates found.</strong>`;
+        document.getElementById('mergeBtn').style.display = 'none';
+        document.getElementById('duplicates').style.display = 'none';
+      }
+    });
+
+    function parseVCF(text) {
+      const entries = text.split('END:VCARD').filter(e => e.trim()).map(e => e + 'END:VCARD');
+      return entries.map(raw => {
+        const nameMatch = raw.match(/FN:(.+)/);
+        const telMatch = [...raw.matchAll(/TEL.*:(\+?[0-9\-]+)/g)].map(m => m[1]);
+        return {
+          name: nameMatch ? nameMatch[1] : '',
+          phones: telMatch,
+          raw
+        };
+      });
+    }
+
+    function detectPhoneDuplicates(contacts) {
+      const phoneToContacts = new Map();
+
+      contacts.forEach(contact => {
+        contact.phones.forEach(phone => {
+          if (!phoneToContacts.has(phone)) {
+            phoneToContacts.set(phone, []);
+          }
+          phoneToContacts.get(phone).push(contact);
+        });
+      });
+
+      // Identify duplicates
+      duplicatesMap = new Map();
+      phoneToContacts.forEach((contactsList, phone) => {
+        if (contactsList.length > 1) {
+          duplicatesMap.set(phone, contactsList);
+        }
+      });
+
+      // Prepare merged contacts (remove duplicates)
+      const seenPhones = new Set();
+      mergedContacts = [];
+
+      phoneToContacts.forEach((contactsList, phone) => {
+        if (!seenPhones.has(phone)) {
+          // One contact per unique number
+          const merged = {
+            name: contactsList[0].name || 'Unnamed',
+            phones: [phone]
+          };
+          mergedContacts.push(merged);
+          seenPhones.add(phone);
+        }
+      });
+    }
+
+    function showDuplicates() {
+      const container = document.getElementById('duplicates');
+      container.innerHTML = '<h3>📑 Duplicate Phone Numbers Detected:</h3>';
+
+      duplicatesMap.forEach((contactsList, phone) => {
+        const names = contactsList.map(c => c.name || 'Unnamed').join(', ');
+        container.innerHTML += `<h4>📞 ${phone}</h4><p>Used in: ${names}</p>`;
+      });
+
+      container.style.display = 'block';
+    }
+
+    function buildVCF(contacts) {
+      return contacts.map(c => {
+        let vcard = `BEGIN:VCARD\nVERSION:3.0\nFN:${c.name || 'Unnamed'}\n`;
+        c.phones.forEach(phone => {
+          vcard += `TEL;TYPE=CELL:${phone}\n`;
+        });
+        vcard += `END:VCARD\n`;
+        return vcard;
+      }).join('\n');
+    }
+
+    document.getElementById('mergeBtn').addEventListener('click', () => {
+      const finalVCF = buildVCF(mergedContacts);
+      downloadVCF(finalVCF, "merged_contacts.vcf");
+    });
+
+    function downloadVCF(content, filename) {
+      const blob = new Blob([content], { type: 'text/vcard' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      a.click();
+    }
+  </script>
+</body>
+</html>

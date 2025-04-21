@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>📇 VCF Filter Contacts </title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; max-width: 850px; margin: auto; }
+    input, button { margin: 8px 5px; padding: 8px 12px; font-size: 14px; }
+    .contact { border-bottom: 1px solid #ddd; padding: 6px 0; }
+    .summary { margin: 12px 0; font-size: 16px; font-weight: bold; }
+  </style>
+</head>
+<body>
+
+  <h2>📱 VCF  Filter & Export</h2>
+
+  <input type="file" id="vcfFile" accept=".vcf" />
+  <br>
+
+  <input type="text" id="searchInput" placeholder="Search contacts by name (e.g. 'Client')" disabled />
+  <button id="searchBtn" disabled>Search</button>
+  <button id="selectAllBtn" disabled>Select All</button>
+  <button id="saveSelectedBtn" disabled>Save Selected as VCF</button>
+
+  <div class="summary" id="summary"></div>
+  <div id="contacts"></div>
+
+  <script>
+    let contacts = [];
+    let filteredContacts = [];
+
+    function parseVCF(vcfText) {
+      const entries = vcfText.split("BEGIN:VCARD").slice(1);
+      contacts = entries.map(entry => {
+        const full = "BEGIN:VCARD" + entry.trim();
+        const nameMatch = full.match(/FN:(.+)/);
+        const telMatch = full.match(/TEL[^:]*:(.+)/);
+        return {
+          full,
+          name: nameMatch ? nameMatch[1].trim() : "Unknown",
+          phone: telMatch ? telMatch[1].trim() : "N/A",
+          selected: false
+        };
+      });
+      filteredContacts = [...contacts];
+      document.getElementById("searchInput").disabled = false;
+      document.getElementById("searchBtn").disabled = false;
+      updateSummary();
+      displayContacts(filteredContacts);
+    }
+
+    function displayContacts(list) {
+      const container = document.getElementById("contacts");
+      container.innerHTML = "";
+
+      list.forEach((c, i) => {
+        const serialChar = String.fromCharCode(65 + (i % 26)); // A-Z repeat
+        const div = document.createElement("div");
+        div.className = "contact";
+        div.innerHTML = `
+          <label>
+            ${serialChar}. 
+            <input type="checkbox" data-index="${i}" ${c.selected ? "checked" : ""} />
+            <strong>${c.name}</strong> — ${c.phone}
+          </label>
+        `;
+        container.appendChild(div);
+      });
+      document.getElementById("selectAllBtn").disabled = list.length === 0;
+      document.getElementById("saveSelectedBtn").disabled = list.filter(c => c.selected).length === 0;
+      updateSummary();
+    }
+
+    function updateSummary() {
+      const total = contacts.length;
+      const visible = filteredContacts.length;
+      const selected = filteredContacts.filter(c => c.selected).length;
+      document.getElementById("summary").innerHTML = 
+        `📄 Total Contacts: ${total} | 📃 Showing: ${visible} | ✅ Selected: ${selected}`;
+    }
+
+    document.getElementById("vcfFile").addEventListener("change", function (e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function (event) {
+        parseVCF(event.target.result);
+      };
+      reader.readAsText(file);
+    });
+
+    document.getElementById("searchBtn").addEventListener("click", function () {
+      const keyword = document.getElementById("searchInput").value.toLowerCase();
+      filteredContacts = contacts.filter(c => c.name.toLowerCase().includes(keyword));
+      filteredContacts.forEach(c => c.selected = false);
+      displayContacts(filteredContacts);
+    });
+
+    document.getElementById("contacts").addEventListener("change", function (e) {
+      if (e.target.type === "checkbox") {
+        const index = e.target.dataset.index;
+        filteredContacts[index].selected = e.target.checked;
+        document.getElementById("saveSelectedBtn").disabled = filteredContacts.filter(c => c.selected).length === 0;
+        updateSummary();
+      }
+    });
+
+    document.getElementById("selectAllBtn").addEventListener("click", function () {
+      const isSelecting = this.textContent.includes("Select");
+      filteredContacts.forEach(c => c.selected = isSelecting);
+      this.textContent = isSelecting ? "Deselect All" : "Select All";
+      displayContacts(filteredContacts);
+    });
+
+    document.getElementById("saveSelectedBtn").addEventListener("click", function () {
+      const selectedVCF = filteredContacts.filter(c => c.selected).map(c => c.full).join("\n");
+      const blob = new Blob([selectedVCF], { type: "text/vcard" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "selected_contacts.vcf";
+      a.click();
+    });
+
+  </script>
+
+</body>
+</html>

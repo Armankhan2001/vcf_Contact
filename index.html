@@ -2,159 +2,154 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>VCF Contact Manager</title>
+  <title>Fast VCF Contact Manager</title>
   <style>
-    body { font-family: Arial, sans-serif; padding: 20px; max-width: 900px; margin: auto; }
-    input, button { margin: 5px; padding: 8px; font-size: 16px; }
-    .contact { padding: 5px; border-bottom: 1px solid #ddd; }
-    .duplicates { background: #ffe7e7; padding: 10px; margin: 15px 0; }
-    #counts { margin: 15px 0; font-weight: bold; }
-    .btn-group button { margin: 5px; }
+    body { font-family: sans-serif; padding: 20px; max-width: 900px; margin: auto; }
+    input, button { padding: 8px; margin: 5px; }
+    .contact { padding: 5px; border-bottom: 1px solid #ddd; display: flex; justify-content: space-between; }
+    .duplicate { background-color: #fff8dc; }
+    .highlight { font-weight: bold; color: #b71c1c; }
+    .hidden { display: none; }
   </style>
 </head>
 <body>
 
-  <h2>📇 VCF Contact Manager</h2>
+<h2>📱 Optimized VCF.File Contact Manager</h2>
+<nav style="margin-bottom: 20px;">
+    <a href="filtercontacts.html" style="padding: 8px 12px; background: #007bff; color: #fff; text-decoration: none; border-radius: 5px;">🔍 Filter Contacts</a>
+  </nav>
 
-  <input type="file" id="vcfFile" accept=".vcf" />
-  <div id="counts"></div>
+  <nav style="margin-bottom: 20px;">
+    <a href="merge2file.html" style="padding: 8px 12px; background: #007bff; color: #fff; text-decoration: none; border-radius: 5px;"> Merge 2 File</a>
+  </nav>
 
-  <div class="btn-group">
-    <button id="selectAllBtn" disabled>Select All</button>
-    <button id="deleteSelectedBtn" disabled>Delete Selected</button>
-    <button id="mergeDuplicatesBtn" disabled>Merge Duplicates</button>
-    <button id="downloadBtn" disabled>⬇️ Download Contacts</button>
-  </div>
+  <nav style="margin-bottom: 20px;">
+    <a href="sdmd.html" style="padding: 8px 12px; background: #007bff; color: #fff; text-decoration: none; border-radius: 5px;">Select/Delete/Merge | Contacts </a>
+  </nav>
 
-  <div id="duplicatesSection"></div>
-  <div id="contacts"></div>
+  <nav style="margin-bottom: 20px;">
+    <a href="deepCheckDuplicate.html" style="padding: 8px 12px; background: #007bff; color: #fff; text-decoration: none; border-radius: 5px;">Deep Check | Duplicate</a>
+  </nav>
 
-  <script>
-    let contacts = [];
-    let duplicates = [];
+<input type="file" id="vcfFile" accept=".vcf">
+<input type="text" id="searchInput" placeholder="Search by name...">
+<button onclick="selectAll()">Select All</button>
+<button onclick="showDuplicates()">View Duplicates</button>
+<button onclick="mergeAndDownload()">Merge & Download</button>
 
-    function parseVCF(vcfText) {
-      const entries = vcfText.split("BEGIN:VCARD").slice(1);
-      contacts = entries.map(entry => {
-        const full = "BEGIN:VCARD" + entry.trim();
-        const nameMatch = full.match(/FN:(.+)/);
-        const telMatch = full.match(/TEL[^:]*:(.+)/);
-        return {
-          full,
-          name: nameMatch ? nameMatch[1].trim() : "Unknown",
-          phone: telMatch ? telMatch[1].trim() : "N/A",
-          selected: false
-        };
+<div id="summary"></div>
+<div id="contacts"></div>
+<div id="duplicates" class="hidden"></div>
+
+<script>
+let contacts = [], duplicatesMap = new Map();
+
+document.getElementById('vcfFile').addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = evt => parseVCF(evt.target.result);
+  reader.readAsText(file);
+});
+
+function parseVCF(data) {
+  contacts = [];
+  duplicatesMap.clear();
+  const cards = data.split('BEGIN:VCARD').slice(1);
+  cards.forEach((card, i) => {
+    const nameMatch = card.match(/FN:(.+)/);
+    const phoneMatch = card.match(/TEL[^:]*:(.+)/);
+    const name = nameMatch ? nameMatch[1].trim() : "Unknown";
+    const phone = phoneMatch ? phoneMatch[1].trim() : "N/A";
+    const full = 'BEGIN:VCARD' + card;
+    contacts.push({ index: i, name, phone, selected: false, full });
+    if (phone !== "N/A") {
+      if (!duplicatesMap.has(phone)) duplicatesMap.set(phone, []);
+      duplicatesMap.get(phone).push(i);
+    }
+  });
+  renderSummary();
+  renderContacts();
+}
+
+function renderSummary() {
+  const total = contacts.length;
+  const duplicatesCount = [...duplicatesMap.values()].filter(v => v.length > 1).reduce((a, b) => a + b.length, 0);
+  const selected = contacts.filter(c => c.selected).length;
+  document.getElementById('summary').innerHTML = `
+    <p><strong>Total:</strong> ${total}
+    | <strong>Duplicates:</strong> ${duplicatesCount}
+    | <strong>Selected:</strong> ${selected}</p>
+  `;
+}
+
+function renderContacts(filter = '') {
+  const list = document.getElementById('contacts');
+  list.innerHTML = '';
+  const frag = document.createDocumentFragment();
+  let counter = 65;
+  contacts.forEach(c => {
+    if (filter && !c.name.toLowerCase().includes(filter)) return;
+    const div = document.createElement('div');
+    div.className = 'contact';
+    if (duplicatesMap.has(c.phone) && duplicatesMap.get(c.phone).length > 1) div.classList.add('duplicate');
+    div.innerHTML = `
+      <span>${String.fromCharCode(counter++ % 90)}.
+      <input type="checkbox" ${c.selected ? 'checked' : ''} onchange="toggleSelect(${c.index})">
+      <strong>${c.name}</strong> — <span class="highlight">${c.phone}</span></span>
+    `;
+    frag.appendChild(div);
+  });
+  list.appendChild(frag);
+  renderSummary();
+}
+
+function toggleSelect(idx) {
+  contacts[idx].selected = !contacts[idx].selected;
+  renderSummary();
+}
+
+function selectAll() {
+  const allSelected = contacts.every(c => c.selected);
+  contacts.forEach(c => c.selected = !allSelected);
+  renderContacts(document.getElementById('searchInput').value.toLowerCase());
+}
+
+document.getElementById('searchInput').addEventListener('input', e => {
+  renderContacts(e.target.value.toLowerCase());
+});
+
+function showDuplicates() {
+  const dupDiv = document.getElementById('duplicates');
+  dupDiv.classList.remove('hidden');
+  dupDiv.innerHTML = `<h3>Duplicate Numbers:</h3>`;
+  let any = false;
+  duplicatesMap.forEach((indexes, phone) => {
+    if (indexes.length > 1) {
+      any = true;
+      dupDiv.innerHTML += `<p><strong>${phone}</strong> (${indexes.length} entries)</p>`;
+      indexes.forEach(i => {
+        const c = contacts[i];
+        dupDiv.innerHTML += `<div class="contact">${c.name} — ${c.phone}</div>`;
       });
-      detectDuplicates();
-      renderContacts();
-      updateCounts();
     }
+  });
+  if (!any) dupDiv.innerHTML += `<p>No duplicates found.</p>`;
+}
 
-    function detectDuplicates() {
-      const seen = {};
-      duplicates = [];
-      contacts.forEach(c => {
-        if (seen[c.phone]) {
-          if (!duplicates.find(d => d.phone === c.phone)) {
-            duplicates.push(c);
-          }
-        } else {
-          seen[c.phone] = true;
-        }
-      });
-      document.getElementById("mergeDuplicatesBtn").disabled = duplicates.length === 0;
-      renderDuplicates();
-    }
-
-    function renderDuplicates() {
-      const dupDiv = document.getElementById("duplicatesSection");
-      if (duplicates.length === 0) {
-        dupDiv.innerHTML = '';
-        return;
-      }
-      dupDiv.innerHTML = `<div class="duplicates">
-        🔴 <strong>Found ${duplicates.length} duplicate number(s):</strong><br>
-        ${duplicates.map(d => `${d.name} — ${d.phone}`).join('<br>')}
-      </div>`;
-    }
-
-    function renderContacts() {
-      const container = document.getElementById("contacts");
-      container.innerHTML = "";
-      contacts.forEach((c, i) => {
-        const div = document.createElement("div");
-        div.className = "contact";
-        div.innerHTML = `
-          <label>
-            <input type="checkbox" data-index="${i}" ${c.selected ? "checked" : ""} />
-            <strong>${c.name}</strong> — ${c.phone}
-          </label>`;
-        container.appendChild(div);
-      });
-      document.getElementById("selectAllBtn").disabled = contacts.length === 0;
-      document.getElementById("deleteSelectedBtn").disabled = contacts.length === 0;
-      document.getElementById("downloadBtn").disabled = contacts.length === 0;
-    }
-
-    function updateCounts() {
-      const total = contacts.length;
-      const selected = contacts.filter(c => c.selected).length;
-      const dupes = duplicates.length;
-      document.getElementById("counts").textContent = `📋 Total Contacts: ${total} | ✅ Selected: ${selected} | 🔴 Duplicates: ${dupes}`;
-    }
-
-    document.getElementById("vcfFile").addEventListener("change", function (e) {
-      const file = e.target.files[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = event => parseVCF(event.target.result);
-      reader.readAsText(file);
-    });
-
-    document.getElementById("contacts").addEventListener("change", function (e) {
-      if (e.target.type === "checkbox") {
-        const index = e.target.dataset.index;
-        contacts[index].selected = e.target.checked;
-        updateCounts();
-      }
-    });
-
-    document.getElementById("selectAllBtn").addEventListener("click", function () {
-      const allSelected = contacts.every(c => c.selected);
-      contacts.forEach(c => c.selected = !allSelected);
-      renderContacts();
-      updateCounts();
-    });
-
-    document.getElementById("deleteSelectedBtn").addEventListener("click", function () {
-      contacts = contacts.filter(c => !c.selected);
-      detectDuplicates();
-      renderContacts();
-      updateCounts();
-    });
-
-    document.getElementById("mergeDuplicatesBtn").addEventListener("click", function () {
-      const seen = {};
-      contacts = contacts.filter(c => {
-        if (seen[c.phone]) return false;
-        seen[c.phone] = true;
-        return true;
-      });
-      detectDuplicates();
-      renderContacts();
-      updateCounts();
-    });
-
-    document.getElementById("downloadBtn").addEventListener("click", function () {
-      const vcfContent = contacts.map(c => c.full).join("\n");
-      const blob = new Blob([vcfContent], { type: "text/vcard" });
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = "contacts.vcf";
-      a.click();
-    });
-  </script>
+function mergeAndDownload() {
+  const unique = new Map();
+  contacts.forEach(c => {
+    if (!unique.has(c.phone)) unique.set(c.phone, c.full);
+  });
+  const mergedData = [...unique.values()].join('\n');
+  const blob = new Blob([mergedData], { type: "text/vcard" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = "merged_contacts.vcf";
+  link.click();
+}
+</script>
 
 </body>
 </html>

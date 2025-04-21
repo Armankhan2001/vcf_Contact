@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Merge Two VCF Files & Remove Duplicates</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; max-width: 900px; margin: auto; }
+    input, button { margin: 5px; padding: 8px; font-size: 16px; }
+    .duplicates { background: #ffe7e7; padding: 10px; margin: 15px 0; }
+    #counts { margin: 15px 0; font-weight: bold; }
+  </style>
+</head>
+<body>
+
+  <h2>📇 Merge Two VCF Files </h2>
+
+  <input type="file" id="vcfFile1" accept=".vcf" />
+  <input type="file" id="vcfFile2" accept=".vcf" />
+  <button id="mergeBtn" disabled>Merge & Download 📥</button>
+
+  <div id="counts"></div>
+  <div id="duplicatesSection"></div>
+
+  <script>
+    let contacts = [];
+
+    function parseVCF(vcfText) {
+      const entries = vcfText.split("BEGIN:VCARD").slice(1);
+      return entries.map(entry => {
+        const full = "BEGIN:VCARD" + entry.trim();
+        const nameMatch = full.match(/FN:(.+)/);
+        const telMatch = full.match(/TEL[^:]*:(.+)/);
+        return {
+          full,
+          name: nameMatch ? nameMatch[1].trim() : "Unknown",
+          phone: telMatch ? telMatch[1].trim() : "N/A"
+        };
+      });
+    }
+
+    function detectAndRenderDuplicates() {
+      const seen = {};
+      const duplicates = [];
+      contacts.forEach(c => {
+        if (seen[c.phone]) {
+          if (!duplicates.find(d => d.phone === c.phone)) {
+            duplicates.push(c);
+          }
+        } else {
+          seen[c.phone] = true;
+        }
+      });
+
+      const dupDiv = document.getElementById("duplicatesSection");
+      if (duplicates.length === 0) {
+        dupDiv.innerHTML = `<div>✅ No duplicates found across both files.</div>`;
+      } else {
+        dupDiv.innerHTML = `<div class="duplicates">
+          🔴 <strong>Found ${duplicates.length} duplicate number(s):</strong><br>
+          ${duplicates.map(d => `${d.name} — ${d.phone}`).join('<br>')}
+        </div>`;
+      }
+      document.getElementById("counts").textContent = `📋 Total Combined Contacts: ${contacts.length} | 🔴 Duplicates: ${duplicates.length}`;
+    }
+
+    function mergeAndDownload() {
+      const seen = {};
+      const mergedContacts = contacts.filter(c => {
+        if (seen[c.phone]) return false;
+        seen[c.phone] = true;
+        return true;
+      });
+
+      const vcfContent = mergedContacts.map(c => c.full).join("\n");
+      const blob = new Blob([vcfContent], { type: "text/vcard" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "merged_contacts.vcf";
+      a.click();
+    }
+
+    function handleFiles(fileList, callback) {
+      if (!fileList.length) return;
+      const reader = new FileReader();
+      reader.onload = event => {
+        const newContacts = parseVCF(event.target.result);
+        callback(newContacts);
+      };
+      reader.readAsText(fileList[0]);
+    }
+
+    document.getElementById("vcfFile1").addEventListener("change", function () {
+      handleFiles(this.files, newContacts => {
+        contacts = contacts.concat(newContacts);
+        detectAndRenderDuplicates();
+        document.getElementById("mergeBtn").disabled = contacts.length === 0;
+      });
+    });
+
+    document.getElementById("vcfFile2").addEventListener("change", function () {
+      handleFiles(this.files, newContacts => {
+        contacts = contacts.concat(newContacts);
+        detectAndRenderDuplicates();
+        document.getElementById("mergeBtn").disabled = contacts.length === 0;
+      });
+    });
+
+    document.getElementById("mergeBtn").addEventListener("click", mergeAndDownload);
+  </script>
+
+</body>
+</html>
