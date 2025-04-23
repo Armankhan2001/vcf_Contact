@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>VCF to XLSX Converter</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 2rem; }
+    table { border-collapse: collapse; width: 100%; margin-top: 20px; }
+    th, td { border: 1px solid #aaa; padding: 8px; text-align: left; }
+    th { background-color: #f0f0f0; }
+    button { margin-top: 10px; padding: 8px 16px; }
+  </style>
+</head>
+<body>
+  <h2>📁 VCF to XLSX (Sorted, No Duplicates, Serial No)</h2>
+  <input type="file" id="vcfFile" accept=".vcf" />
+  <br />
+  <button onclick="parseVCF()">Preview Contacts</button>
+  <button onclick="downloadXLSX()">Download XLSX</button>
+  <div id="output"></div>
+
+  <script>
+    let contactData = [];
+
+    function formatPhone(raw) {
+      const clean = raw.replace(/\D/g, "");
+      if (clean.length === 10) return "91" + clean;
+      if (clean.startsWith("91") && clean.length === 12) return clean;
+      if (clean.length > 10) return "91" + clean.slice(-10);
+      return "";
+    }
+
+    function parseVCF() {
+      const file = document.getElementById('vcfFile').files[0];
+      if (!file) return alert("Please select a VCF file");
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const text = e.target.result;
+        const cards = text.split("BEGIN:VCARD").slice(1);
+        const contacts = [];
+        const phoneSet = new Set();
+
+        cards.forEach(card => {
+          const name = (card.match(/FN:(.*)/) || [])[1]?.trim() || "";
+          const rawPhone = (card.match(/TEL.*:(.*)/) || [])[1]?.trim() || "";
+          const phone = formatPhone(rawPhone);
+          const email = (card.match(/EMAIL.*:(.*)/) || [])[1]?.trim() || "";
+
+          if (name && phone && !phoneSet.has(phone)) {
+            phoneSet.add(phone);
+            contacts.push({ name, phone, email });
+          }
+        });
+
+        // Sort alphabetically by name
+        contacts.sort((a, b) => a.name.localeCompare(b.name));
+
+        contactData = [["S.No", "Name", "Phone", "Email"]];
+        let html = `<table><tr><th>S.No</th><th>Name</th><th>Phone</th><th>Email</th></tr>`;
+        contacts.forEach((c, i) => {
+          contactData.push([i + 1, c.name, c.phone, c.email]);
+          html += `<tr><td>${i + 1}</td><td>${c.name}</td><td>${c.phone}</td><td>${c.email}</td></tr>`;
+        });
+        html += `</table>`;
+        document.getElementById("output").innerHTML = html;
+      };
+
+      reader.readAsText(file);
+    }
+
+    function downloadXLSX() {
+      if (contactData.length <= 1) return alert("No contact data to export");
+      const ws = XLSX.utils.aoa_to_sheet(contactData);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Contacts");
+      XLSX.writeFile(wb, "contacts_sorted.xlsx");
+    }
+  </script>
+</body>
+</html>
